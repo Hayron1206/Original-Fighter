@@ -5,7 +5,7 @@
 [sub_resource type="RectangleShape2D" id="FloorShape"]
 size = Vector2(1280, 20)
 
-[node name="TrainingArena" type="Node2D"]
+[node name="TrainingArena" type="Node2D" groups=["arena"]]
 script = ExtResource("1_arena")
 
 [node name="Floor" type="StaticBody2D" parent="."]

@@ -21,8 +21,12 @@ const HEAVY_DAMAGE := 20.0
 const AI_ATTACK_RANGE := 105.0
 const AI_ATTACK_COOLDOWN := 0.82
 const HITSTUN_DURATION := 0.16
+const CHARACTER_FRAME_COUNTS := {"raven": 6, "vesper": 6, "hayashi": 5}
+const CHARACTER_SCALES := {"raven": 1.22, "vesper": 1.14, "hayashi": 1.08}
+const CHARACTER_FOOT_PIXELS := {"raven": 143.0, "vesper": 152.0, "hayashi": 160.0}
 
 @onready var hitbox: Area2D = $Hitbox
+@onready var character_sprite: AnimatedSprite2D = $CharacterSprite
 var controller_manager: Node
 var health := MAX_HEALTH
 var _is_ko := false
@@ -32,6 +36,7 @@ var is_blocking := false
 var _attack_cooldown := 0.0
 var _current_attack_damage := LIGHT_DAMAGE
 var _attack_visual_timer := 0.0
+var _sprite_attack_timer := 0.0
 var _heavy_attack_visual := false
 var _ai_attack_timer := 0.0
 var _hitstun_timer := 0.0
@@ -50,6 +55,7 @@ func _physics_process(delta: float) -> void:
 	_attack_cooldown = maxf(0.0, _attack_cooldown - delta)
 	_ai_attack_timer = maxf(0.0, _ai_attack_timer - delta)
 	var was_attacking := _attack_visual_timer > 0.0
+	_sprite_attack_timer = maxf(0.0, _sprite_attack_timer - delta)
 	var was_heavy_visual := _heavy_attack_visual
 	_attack_visual_timer = maxf(0.0, _attack_visual_timer - delta)
 	if _attack_visual_timer <= 0.0:
@@ -136,12 +142,79 @@ func _physics_process(delta: float) -> void:
 			_current_attack_damage = LIGHT_DAMAGE
 			_attack_cooldown = LIGHT_ATTACK_COOLDOWN
 		_attack_visual_timer = 0.22 if _heavy_attack_visual else 0.14
+		_sprite_attack_timer = 0.49 if _heavy_attack_visual else 0.43
 		hitbox.position.x = -48.0 if facing_left else 48.0
 		hitbox.activate()
 
+	_update_sprite_animation(direction)
 	if was_blocking != is_blocking or was_attacking != (_attack_visual_timer > 0.0) or was_heavy_visual != _heavy_attack_visual:
 		queue_redraw()
 
+func set_character_visual(character_key: String) -> void:
+	var frames := SpriteFrames.new()
+	frames.add_animation("idle")
+	frames.set_animation_speed("idle", 7.0)
+	frames.set_animation_loop("idle", true)
+	_add_animation_frames(frames, character_key, "idle", int(CHARACTER_FRAME_COUNTS.get(character_key, 0)), 7.0)
+	var animation_counts: Dictionary = {
+		"raven": {"walk": 8, "crouch": 4, "jump": 6, "guard": 4, "light_attack": 6, "heavy_attack": 6},
+		"vesper": {"walk": 8, "crouch": 4, "jump": 6, "guard": 4, "light_attack": 6, "heavy_attack": 6},
+		"hayashi": {"walk": 6, "crouch": 4, "jump": 5, "guard": 4, "light_attack": 3, "heavy_attack": 5},
+	}
+	var character_actions: Dictionary = animation_counts.get(character_key, {})
+	for action_variant in character_actions.keys():
+		var action_name := String(action_variant)
+		var action_fps := 10.0
+		if action_name == "jump":
+			action_fps = 8.0
+		elif action_name == "crouch" or action_name == "guard":
+			action_fps = 6.0
+		elif action_name == "light_attack":
+			action_fps = 14.0
+		elif action_name == "heavy_attack":
+			action_fps = 12.0
+		var action_loops: bool = action_name in ["walk", "crouch", "guard"]
+		_add_animation_frames(frames, character_key, action_name, int(character_actions[action_variant]), action_fps, action_loops)
+	if frames.get_frame_count("idle") == 0:
+		push_warning("Nenhum quadro de idle encontrado para: " + character_key)
+		return
+	character_sprite.sprite_frames = frames
+	character_sprite.animation = "idle"
+	var scale_factor := float(CHARACTER_SCALES.get(character_key, 1.0))
+	var foot_pixel := float(CHARACTER_FOOT_PIXELS.get(character_key, 150.0))
+	var frame_height := float(frames.get_frame_texture("idle", 0).get_height())
+	character_sprite.scale = Vector2.ONE * scale_factor
+	character_sprite.position.y = -(foot_pixel - frame_height * 0.5) * scale_factor
+	character_sprite.flip_h = facing_left
+	character_sprite.play("idle")
+
+func _add_animation_frames(frames: SpriteFrames, character_key: String, animation_name: String, frame_count: int, fps: float, loops: bool = true) -> void:
+	for frame_index in range(frame_count):
+		var frame_path := "res://assets/sprites/characters/%s/%s_%d.png" % [character_key, animation_name, frame_index]
+		var frame_texture := load(frame_path) as Texture2D
+		if frame_texture != null:
+			if not frames.has_animation(animation_name):
+				frames.add_animation(animation_name)
+				frames.set_animation_speed(animation_name, fps)
+				frames.set_animation_loop(animation_name, loops)
+			frames.add_frame(animation_name, frame_texture)
+
+func _update_sprite_animation(direction: float) -> void:
+	var next_animation := "idle"
+	if not is_on_floor():
+		next_animation = "jump"
+	elif _hitstun_timer > 0.0:
+		next_animation = "hit"
+	elif is_blocking:
+		next_animation = "guard"
+	elif _sprite_attack_timer > 0.0:
+		next_animation = "heavy_attack" if _heavy_attack_visual else "light_attack"
+	elif absf(direction) > 0.1:
+		next_animation = "walk"
+	if not character_sprite.sprite_frames.has_animation(next_animation):
+		next_animation = "idle"
+	if character_sprite.animation != next_animation or not character_sprite.is_playing():
+		character_sprite.play(next_animation)
 func set_ai_controlled(enabled: bool) -> void:
 	ai_controlled = enabled
 	_jump_was_down = false
@@ -191,35 +264,11 @@ func _update_facing() -> void:
 			var should_face_left: bool = fighter.global_position.x < global_position.x
 			if facing_left != should_face_left:
 				facing_left = should_face_left
+				character_sprite.flip_h = facing_left
 				queue_redraw()
 			return
-
 func _draw() -> void:
 	var direction := -1.0 if facing_left else 1.0
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(-22 * direction, -66), Vector2(-2 * direction, -66),
-		Vector2(-8 * direction, -12), Vector2(-32 * direction, -8), Vector2(-38 * direction, -20)
-	]), primary_color)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(3 * direction, -66), Vector2(25 * direction, -70),
-		Vector2(39 * direction, -15), Vector2(16 * direction, -8), Vector2(4 * direction, -22)
-	]), primary_color)
-	draw_rect(Rect2(-37 * direction, -12, 32, 9), accent_color)
-	draw_rect(Rect2(12 * direction, -12, 34, 9), accent_color)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(-29 * direction, -126), Vector2(17 * direction, -130),
-		Vector2(34 * direction, -108), Vector2(27 * direction, -67),
-		Vector2(-28 * direction, -64), Vector2(-41 * direction, -103)
-	]), primary_color)
-	draw_line(Vector2(-18 * direction, -119), Vector2(-22 * direction, -75), accent_color, 4.0)
-	draw_circle(Vector2(0, -146), 17.0, Color("d7ad91"))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(-17 * direction, -148), Vector2(-21 * direction, -166),
-		Vector2(-7 * direction, -161), Vector2(0, -175),
-		Vector2(9 * direction, -160), Vector2(21 * direction, -164),
-		Vector2(17 * direction, -143), Vector2(4 * direction, -151), Vector2(-7 * direction, -141)
-	]), hair_color)
-
 	if is_blocking:
 		draw_line(Vector2(10 * direction, -112), Vector2(45 * direction, -132), accent_color, 10.0)
 		draw_arc(Vector2(42 * direction, -112), 29.0, -1.15, 1.15, 16, Color(accent_color, 0.7), 3.0)
@@ -228,5 +277,3 @@ func _draw() -> void:
 		var swing_length := 112.0 if _heavy_attack_visual else 92.0
 		draw_line(Vector2(32 * direction, -100), Vector2(swing_length * direction, -130), Color(accent_color, 0.9), swing_width)
 		draw_line(Vector2(40 * direction, -91), Vector2(83 * direction, -91), Color(accent_color, 0.45), 3.0)
-
-	draw_string(ThemeDB.fallback_font, Vector2(-75, 30), display_name, HORIZONTAL_ALIGNMENT_CENTER, 150, 16, Color("f4f1ec"))

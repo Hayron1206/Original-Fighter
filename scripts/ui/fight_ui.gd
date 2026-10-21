@@ -4,9 +4,11 @@ const BAR_WIDTH := 420.0
 const BAR_HEIGHT := 28.0
 const ROUND_DURATION := 99.0
 var _health_bars: Dictionary = {}
+var _fighter_name_labels: Dictionary = {}
 var _fighters: Dictionary = {}
 var _ai_status: Label
 var _ai_toggle: CheckButton
+var _stage_selector: OptionButton
 var _timer_label: Label
 var _view_width := 1280.0
 var _time_left := ROUND_DURATION
@@ -51,6 +53,8 @@ func _create_health_display(root: Control, player: int, fighter_name: String, po
 	title.add_theme_font_size_override("font_size", 20)
 	title.add_theme_color_override("font_color", Color("f4f1ec"))
 	root.add_child(title)
+
+	_fighter_name_labels[player] = title
 
 	var bar := ProgressBar.new()
 	bar.position = position + Vector2(0.0, 30.0)
@@ -102,20 +106,31 @@ func _create_options_menu(root: Control) -> void:
 	root.add_child(options_button)
 
 	var panel := PanelContainer.new()
-	panel.position = Vector2((_view_width - 300.0) * 0.5, 128.0)
-	panel.custom_minimum_size = Vector2(300.0, 110.0)
+	panel.position = Vector2((_view_width - 360.0) * 0.5, 128.0)
+	panel.custom_minimum_size = Vector2(360.0, 190.0)
 	panel.visible = false
 	root.add_child(panel)
 	options_button.pressed.connect(func() -> void: panel.visible = not panel.visible)
 
 	var content := VBoxContainer.new()
 	panel.add_child(content)
-	var heading := Label.new()
-	heading.text = "CONTROLE DO OPONENTE"
-	heading.add_theme_font_size_override("font_size", 16)
-	content.add_child(heading)
+	var stage_heading := Label.new()
+	stage_heading.text = "CENÁRIO"
+	stage_heading.add_theme_font_size_override("font_size", 16)
+	content.add_child(stage_heading)
+	_stage_selector = OptionButton.new()
+	_stage_selector.add_item("Vila do Vale das Lanternas", 0)
+	_stage_selector.add_item("Omni Layer", 1)
+	_stage_selector.item_selected.connect(_on_stage_selected)
+	var match_settings = get_node("/root/MatchSettings")
+	_stage_selector.select(match_settings.stage_index)
+	content.add_child(_stage_selector)
+	var opponent_heading := Label.new()
+	opponent_heading.text = "CONTROLE DO OPONENTE"
+	opponent_heading.add_theme_font_size_override("font_size", 16)
+	content.add_child(opponent_heading)
 	_ai_toggle = CheckButton.new()
-	_ai_toggle.text = "Computador controla Vesper (P2)"
+	_ai_toggle.text = "Computador controla Jogador 2 (P2)"
 	_ai_toggle.button_pressed = false
 	_ai_toggle.toggled.connect(_on_ai_toggled)
 	content.add_child(_ai_toggle)
@@ -150,9 +165,9 @@ func _finish_round(winner: int, reason: String) -> void:
 	_round_over = true
 	var result_text := "EMPATE!"
 	if winner == 1:
-		result_text = "VOCÊ VENCEU!" if _ai_toggle.button_pressed else "RAVEN VENCEU!"
+		result_text = "VOCÊ VENCEU!" if _ai_toggle.button_pressed else "%s VENCEU!" % str(_fighters[1].display_name)
 	elif winner == 2:
-		result_text = "VOCÊ PERDEU!" if _ai_toggle.button_pressed else "VESPER VENCEU!"
+		result_text = "VOCÊ PERDEU!" if _ai_toggle.button_pressed else "%s VENCEU!" % str(_fighters[2].display_name)
 	_show_result_overlay(result_text, reason)
 
 func _show_result_overlay(result_text: String, reason: String) -> void:
@@ -187,3 +202,12 @@ func _show_result_overlay(result_text: String, reason: String) -> void:
 	rematch_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	rematch_button.pressed.connect(func() -> void: get_tree().reload_current_scene())
 	content.add_child(rematch_button)
+
+func _on_stage_selected(stage_index: int) -> void:
+	get_tree().current_scene.call("select_stage", stage_index)
+
+func set_fighter_names(player_one_name: String, player_two_name: String) -> void:
+	if _fighter_name_labels.has(1):
+		_fighter_name_labels[1].text = player_one_name
+	if _fighter_name_labels.has(2):
+		_fighter_name_labels[2].text = player_two_name

@@ -1,11 +1,13 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/arena/training_arena.tscn" id="1_arena"]
 [ext_resource type="PackedScene" path="res://scenes/fighters/fighter_placeholder.tscn" id="2_fighter"]
 [ext_resource type="Script" path="res://scripts/input/controller_manager.gd" id="3_input"]
 [ext_resource type="Script" path="res://scripts/ui/fight_ui.gd" id="4_ui"]
+[ext_resource type="Script" path="res://scripts/fight.gd" id="5_fight"]
 
 [node name="Fight" type="Node2D"]
+script = ExtResource("5_fight")
 
 [node name="FightUI" type="CanvasLayer" parent="."]
 script = ExtResource("4_ui")
