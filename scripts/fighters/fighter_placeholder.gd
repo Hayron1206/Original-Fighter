@@ -13,9 +13,11 @@ const GRAVITY := 1600.0
 const JUMP_SPEED := -620.0
 const LEFT_BOUND := 100.0
 const RIGHT_BOUND := 1180.0
-const ATTACK_COOLDOWN := 0.38
+const LIGHT_ATTACK_COOLDOWN := 0.38
+const HEAVY_ATTACK_COOLDOWN := 0.72
 const MAX_HEALTH := 100.0
-const DAMAGE_PER_HIT := 10.0
+const LIGHT_DAMAGE := 10.0
+const HEAVY_DAMAGE := 20.0
 const AI_ATTACK_RANGE := 105.0
 const AI_ATTACK_COOLDOWN := 0.82
 const HITSTUN_DURATION := 0.16
@@ -23,16 +25,20 @@ const HITSTUN_DURATION := 0.16
 @onready var hitbox: Area2D = $Hitbox
 var controller_manager: Node
 var health := MAX_HEALTH
+var _is_ko := false
 var ai_controlled := false
 var facing_left := false
 var is_blocking := false
 var _attack_cooldown := 0.0
+var _current_attack_damage := LIGHT_DAMAGE
 var _attack_visual_timer := 0.0
+var _heavy_attack_visual := false
 var _ai_attack_timer := 0.0
 var _hitstun_timer := 0.0
 var _knockback_velocity := 0.0
 var _jump_was_down := false
-var _attack_was_down := false
+var _light_attack_was_down := false
+var _heavy_attack_was_down := false
 
 func _ready() -> void:
 	controller_manager = get_tree().get_first_node_in_group("controller_manager")
@@ -44,19 +50,23 @@ func _physics_process(delta: float) -> void:
 	_attack_cooldown = maxf(0.0, _attack_cooldown - delta)
 	_ai_attack_timer = maxf(0.0, _ai_attack_timer - delta)
 	var was_attacking := _attack_visual_timer > 0.0
+	var was_heavy_visual := _heavy_attack_visual
 	_attack_visual_timer = maxf(0.0, _attack_visual_timer - delta)
+	if _attack_visual_timer <= 0.0:
+		_heavy_attack_visual = false
 
 	var direction := 0.0
 	var jump_down := false
 	var block_pressed := false
-	var attack_down := false
+	var light_attack_down := false
+	var heavy_attack_down := false
 	if player_number == 2 and ai_controlled:
 		var opponent := _get_opponent()
 		if opponent != null:
 			var distance_to_opponent := opponent.global_position.x - global_position.x
 			direction = signf(distance_to_opponent) if absf(distance_to_opponent) > AI_ATTACK_RANGE else 0.0
-			attack_down = absf(distance_to_opponent) <= AI_ATTACK_RANGE and _ai_attack_timer <= 0.0 and is_on_floor()
-			if attack_down:
+			light_attack_down = absf(distance_to_opponent) <= AI_ATTACK_RANGE and _ai_attack_timer <= 0.0 and is_on_floor()
+			if light_attack_down:
 				_ai_attack_timer = AI_ATTACK_COOLDOWN
 	elif player_number == 1:
 		if Input.is_key_pressed(KEY_A):
@@ -65,7 +75,8 @@ func _physics_process(delta: float) -> void:
 			direction += 1.0
 		jump_down = Input.is_key_pressed(KEY_W)
 		block_pressed = Input.is_key_pressed(KEY_F)
-		attack_down = Input.is_key_pressed(KEY_G)
+		light_attack_down = Input.is_key_pressed(KEY_G)
+		heavy_attack_down = Input.is_key_pressed(KEY_H)
 	else:
 		if Input.is_key_pressed(KEY_LEFT):
 			direction -= 1.0
@@ -73,19 +84,23 @@ func _physics_process(delta: float) -> void:
 			direction += 1.0
 		jump_down = Input.is_key_pressed(KEY_UP)
 		block_pressed = Input.is_key_pressed(KEY_K)
-		attack_down = Input.is_key_pressed(KEY_COMMA)
+		light_attack_down = Input.is_key_pressed(KEY_COMMA)
+		heavy_attack_down = Input.is_key_pressed(KEY_PERIOD)
 
 	if controller_manager != null and not (player_number == 2 and ai_controlled):
 		direction += controller_manager.get_horizontal_axis(player_number)
 		jump_down = jump_down or controller_manager.is_button_pressed(player_number, JOY_BUTTON_A)
-		block_pressed = block_pressed or controller_manager.is_button_pressed(player_number, JOY_BUTTON_LEFT_SHOULDER)
-		attack_down = attack_down or controller_manager.is_button_pressed(player_number, JOY_BUTTON_X)
+		block_pressed = block_pressed or controller_manager.is_button_pressed(player_number, JOY_BUTTON_B)
+		light_attack_down = light_attack_down or controller_manager.is_button_pressed(player_number, JOY_BUTTON_X)
+		heavy_attack_down = heavy_attack_down or controller_manager.is_button_pressed(player_number, JOY_BUTTON_Y)
 		direction = clampf(direction, -1.0, 1.0)
 
 	var jump_pressed := jump_down and not _jump_was_down
-	var attack_pressed := attack_down and not _attack_was_down
+	var light_attack_pressed := light_attack_down and not _light_attack_was_down
+	var heavy_attack_pressed := heavy_attack_down and not _heavy_attack_was_down
 	_jump_was_down = jump_down
-	_attack_was_down = attack_down
+	_light_attack_was_down = light_attack_down
+	_heavy_attack_was_down = heavy_attack_down
 
 	var was_blocking := is_blocking
 	if _hitstun_timer > 0.0:
@@ -112,19 +127,26 @@ func _physics_process(delta: float) -> void:
 	global_position.x = clampf(global_position.x, LEFT_BOUND, RIGHT_BOUND)
 	_update_facing()
 
-	if attack_pressed and _attack_cooldown <= 0.0 and is_on_floor() and not is_blocking and _hitstun_timer <= 0.0:
-		_attack_cooldown = ATTACK_COOLDOWN
-		_attack_visual_timer = 0.14
+	if (light_attack_pressed or heavy_attack_pressed) and _attack_cooldown <= 0.0 and is_on_floor() and not is_blocking and _hitstun_timer <= 0.0:
+		_heavy_attack_visual = heavy_attack_pressed
+		if heavy_attack_pressed:
+			_current_attack_damage = HEAVY_DAMAGE
+			_attack_cooldown = HEAVY_ATTACK_COOLDOWN
+		else:
+			_current_attack_damage = LIGHT_DAMAGE
+			_attack_cooldown = LIGHT_ATTACK_COOLDOWN
+		_attack_visual_timer = 0.22 if _heavy_attack_visual else 0.14
 		hitbox.position.x = -48.0 if facing_left else 48.0
 		hitbox.activate()
 
-	if was_blocking != is_blocking or was_attacking != (_attack_visual_timer > 0.0):
+	if was_blocking != is_blocking or was_attacking != (_attack_visual_timer > 0.0) or was_heavy_visual != _heavy_attack_visual:
 		queue_redraw()
 
 func set_ai_controlled(enabled: bool) -> void:
 	ai_controlled = enabled
 	_jump_was_down = false
-	_attack_was_down = false
+	_light_attack_was_down = false
+	_heavy_attack_was_down = false
 
 func apply_damage(amount: float, attacker: Node2D) -> void:
 	if health <= 0.0 or is_blocking or attacker == null:
@@ -137,11 +159,25 @@ func apply_damage(amount: float, attacker: Node2D) -> void:
 	_hitstun_timer = HITSTUN_DURATION
 	health_changed.emit(health, MAX_HEALTH)
 	print(display_name, " recebeu dano. Vida: ", int(health), "/", int(MAX_HEALTH))
+	if health <= 0.0:
+		_knock_out()
 
+func _knock_out() -> void:
+	if _is_ko:
+		return
+	_is_ko = true
+	velocity = Vector2.ZERO
+	is_blocking = false
+	_attack_visual_timer = 0.0
+	queue_redraw()
+	var fall_angle := deg_to_rad(-90.0 if facing_left else 90.0)
+	var death_tween := create_tween().set_parallel(true)
+	death_tween.tween_property(self, "rotation", fall_angle, 0.65).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	death_tween.tween_property(self, "modulate", Color(0.58, 0.58, 0.64, 1.0), 0.65)
 func _on_hitbox_hit_landed(hurtbox: Area2D) -> void:
 	var target := hurtbox.get_parent()
 	if target != self and target.has_method("apply_damage"):
-		target.apply_damage(DAMAGE_PER_HIT, self)
+		target.apply_damage(_current_attack_damage, self)
 
 func _get_opponent() -> Node2D:
 	for fighter in get_tree().get_nodes_in_group("fighters"):
@@ -188,7 +224,9 @@ func _draw() -> void:
 		draw_line(Vector2(10 * direction, -112), Vector2(45 * direction, -132), accent_color, 10.0)
 		draw_arc(Vector2(42 * direction, -112), 29.0, -1.15, 1.15, 16, Color(accent_color, 0.7), 3.0)
 	elif _attack_visual_timer > 0.0:
-		draw_line(Vector2(32 * direction, -100), Vector2(92 * direction, -130), Color(accent_color, 0.9), 6.0)
+		var swing_width := 10.0 if _heavy_attack_visual else 6.0
+		var swing_length := 112.0 if _heavy_attack_visual else 92.0
+		draw_line(Vector2(32 * direction, -100), Vector2(swing_length * direction, -130), Color(accent_color, 0.9), swing_width)
 		draw_line(Vector2(40 * direction, -91), Vector2(83 * direction, -91), Color(accent_color, 0.45), 3.0)
 
 	draw_string(ThemeDB.fallback_font, Vector2(-75, 30), display_name, HORIZONTAL_ALIGNMENT_CENTER, 150, 16, Color("f4f1ec"))
