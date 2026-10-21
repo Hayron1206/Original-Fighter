@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/arena/training_arena.gd" id="1_arena"]
+
+[sub_resource type="RectangleShape2D" id="FloorShape"]
+size = Vector2(1280, 20)
+
+[node name="TrainingArena" type="Node2D"]
+script = ExtResource("1_arena")
+
+[node name="Floor" type="StaticBody2D" parent="."]
+position = Vector2(640, 530)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Floor"]
+shape = SubResource("FloorShape")

@@ -1,0 +1,39 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/fighters/fighter_placeholder.gd" id="1_fighter"]
+[ext_resource type="Script" path="res://scripts/combat/hitbox.gd" id="2_hitbox"]
+
+[sub_resource type="RectangleShape2D" id="BodyShape"]
+size = Vector2(42, 132)
+
+[sub_resource type="RectangleShape2D" id="AttackShape"]
+size = Vector2(82, 46)
+
+[node name="FighterPlaceholder" type="CharacterBody2D"]
+collision_layer = 1
+collision_mask = 1
+script = ExtResource("1_fighter")
+
+[node name="BodyCollision" type="CollisionShape2D" parent="."]
+position = Vector2(0, -66)
+shape = SubResource("BodyShape")
+
+[node name="Hurtbox" type="Area2D" parent="." groups=["hurtboxes"]]
+position = Vector2(0, -66)
+collision_layer = 2
+collision_mask = 0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Hurtbox"]
+shape = SubResource("BodyShape")
+
+[node name="Hitbox" type="Area2D" parent="."]
+position = Vector2(48, -92)
+collision_layer = 0
+collision_mask = 2
+monitoring = false
+monitorable = false
+script = ExtResource("2_hitbox")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Hitbox"]
+shape = SubResource("AttackShape")
+
